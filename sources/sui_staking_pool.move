@@ -17,13 +17,13 @@ module suisa::sui_staking_pool {
     use suisa::stsui::{Self, STSUI};
     use suisa::aquarium::{Self, Aquarium};
 
-    const SuiPerStsuiPrecision: u64 = 1000000000;
+    const SuiPerStsuiPrecision: u64 = 1_000_000_000;
+
+    const MIN_STAKING_THRESHOLD: u64 = 1_000_000_000; // 1 SUI
 
     const EInvalidEpoch: u64 = 0;
     const EInvalidTreasuryCap: u64 = 1;
     const EInsufficientSuiAmount: u64 = 2;
-    const EInsufficientStakedSuiTreasurySize: u64 = 3;
-    const EInsufficientValidatorRank: u64 = 4;
 
     struct SuiStakingPool has key {
         id: UID,
@@ -61,6 +61,7 @@ module suisa::sui_staking_pool {
     public entry fun stake_and_get_box(sui_system_state: &mut SuiSystemState, sui_staking_pool: &mut SuiStakingPool, stake: Coin<SUI>, ctx: &mut TxContext) {
         // TODO: apply max size limit to staked_sui_treasury
         let stake_sui_amount = coin::value(&stake);
+        assert!(stake_sui_amount >= MIN_STAKING_THRESHOLD, EInsufficientSuiAmount);
         let sui_treasury_amount = coin::value(&sui_staking_pool.sui_treasury);
         if (sui_treasury_amount > 0) {
             coin::join(&mut stake, coin::split(&mut sui_staking_pool.sui_treasury, sui_treasury_amount, ctx));
@@ -101,12 +102,17 @@ module suisa::sui_staking_pool {
         let current_epoch = tx_context::epoch(ctx);
         let stsui_amount = coin::value(&stsui);
         let sui_amount = stsui_amount * get_sui_per_stsui(sui_system_state, sui_staking_pool, current_epoch) / SuiPerStsuiPrecision;
-        let result_sui = coin::zero(ctx);
+        let sui_treasury_amount = coin::value(&sui_staking_pool.sui_treasury);
+        let result_sui = if (sui_treasury_amount > 0) {
+            coin::split(&mut sui_staking_pool.sui_treasury, math::min(sui_treasury_amount, sui_amount), ctx)
+        } else {
+            coin::zero(ctx)
+        };
         let i = 0;
         while (coin::value(&result_sui) < sui_amount) {
             let staked_sui = vector::borrow_mut(&mut sui_staking_pool.staked_sui_treasury, i);
-            let sui_amount_needed = math::min(staking_pool::staked_sui_amount(staked_sui), sui_amount - coin::value(&result_sui));
-            let staked_sui_needed = if (sui_amount_needed < staking_pool::staked_sui_amount(staked_sui)) {
+            let sui_amount_needed = math::max(math::min(staking_pool::staked_sui_amount(staked_sui), sui_amount - coin::value(&result_sui)), MIN_STAKING_THRESHOLD);
+            let staked_sui_needed = if (staking_pool::staked_sui_amount(staked_sui) - sui_amount_needed >= MIN_STAKING_THRESHOLD) {
                 staking_pool::split(staked_sui, sui_amount_needed, ctx)
             } else {
                 // TODO: optimize time complexity
@@ -151,7 +157,7 @@ module suisa::sui_staking_pool {
     }
 
     public fun get_total_sui_amount(sui_system_state: &mut SuiSystemState, sui_staking_pool: &SuiStakingPool, current_epoch: u64): u64 {
-        let total_sui_amount: u64 = 0;
+        let total_sui_amount: u64 = coin::value(&sui_staking_pool.sui_treasury);
         let i = 0;
         let staked_sui_treasury_size = vector::length(&sui_staking_pool.staked_sui_treasury);
         while (i < staked_sui_treasury_size) {

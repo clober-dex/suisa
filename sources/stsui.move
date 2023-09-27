@@ -10,7 +10,7 @@ module suisa::stsui {
     struct STSUI has drop {}
 
     fun init(witness: STSUI, ctx: &mut TxContext) {
-        let icon_url = url::new_unsafe(ascii::string(b"https://pbs.twimg.com/profile_images/1679045925556355075/lvEiK0XY_400x400.jpg"));
+        let icon_url = url::new_unsafe(ascii::string(b"https://www.suisa.club/assets/icons/icon-stsui.svg"));
         let (treasury_cap, metadata) = coin::create_currency<STSUI>(witness, 9, b"stSUI", b"Staked Sui", b"Staked version of Sui", option::some(icon_url), ctx);
         transfer::public_freeze_object(metadata);
         transfer::public_transfer(treasury_cap, tx_context::sender(ctx))

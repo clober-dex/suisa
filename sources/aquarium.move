@@ -15,6 +15,8 @@ module suisa::aquarium {
 
     const MinEvolveAvailableAge: u64 = 1000;
 
+    const DOLPHIN_THRESHOLD: u64 = 1_000_000_000; // 1 stSUI
+
     const EIsufficientAge: u64 = 0;
     const EInvalidRandomSeed: u64 = 1;
 
@@ -25,6 +27,7 @@ module suisa::aquarium {
         type: u64,
         created_at: u64,
         suik_activated: bool,
+        image_url: String,
     }
 
     struct Aquarium has key {
@@ -57,7 +60,7 @@ module suisa::aquarium {
         let values = vector[
             utf8(b"{name}"),
             utf8(b"https://clober.io"),
-            utf8(b"https://t4.ftcdn.net/jpg/02/74/20/69/360_F_274206901_Jt1PHZTbtwne17anw5eD9oABxStNJhYT.jpg"),
+            utf8(b"{image_url}"),
             utf8(b"A Sui Fish"),
             utf8(b"https://clober.io"),
             utf8(b"Clober Team")
@@ -95,6 +98,11 @@ module suisa::aquarium {
     // below are public entry functions
     public entry fun mint(clock: &Clock, aquarium: &mut Aquarium, stsui: Coin<STSUI>, name: String, ctx: &mut TxContext) {
         let stsui_amount = coin::value(&stsui);
+        let image_url = if (stsui_amount > DOLPHIN_THRESHOLD) {
+            utf8(b"https://www.suisa.club/assets/images/fish/dolphin/item/1.png")
+        } else {
+            utf8(b"https://www.suisa.club/assets/images/fish/goldfish/item/1.png")
+        };
         coin::join(&mut aquarium.stsui_treasury, stsui);
         transfer::public_transfer(SuiFish {
             id: object::new(ctx),
@@ -103,6 +111,7 @@ module suisa::aquarium {
             type: 0,
             created_at: clock::timestamp_ms(clock),
             suik_activated: false,
+            image_url: image_url,
         }, tx_context::sender(ctx));
     }
 
@@ -114,7 +123,7 @@ module suisa::aquarium {
     }
 
     public entry fun burn(aquarium: &mut Aquarium, sui_fish: SuiFish, ctx: &mut TxContext) {
-        let SuiFish { id, stsui_amount, name: _, type: _, created_at: _, suik_activated: _ } = sui_fish;
+        let SuiFish { id, stsui_amount, name: _, type: _, created_at: _, suik_activated: _, image_url: _ } = sui_fish;
         object::delete(id);
         transfer::public_transfer(coin::split(&mut aquarium.stsui_treasury, stsui_amount, ctx), tx_context::sender(ctx));
     }

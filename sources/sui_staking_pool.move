@@ -1,6 +1,6 @@
 module suisa::sui_staking_pool {
     use std::vector;
-    use std::string::String;
+    use std::string::{utf8, String};
 
     use sui::tx_context::{Self, TxContext};
     use sui::object::{Self, ID, UID};
@@ -10,6 +10,8 @@ module suisa::sui_staking_pool {
     use sui::math;
     use sui::clock::Clock;
     use sui::table;
+    use sui::package;
+    use sui::display;
 
     use sui_system::sui_system::{Self, SuiSystemState};
     use sui_system::staking_pool::{Self, StakedSui, PoolTokenExchangeRate};
@@ -20,10 +22,13 @@ module suisa::sui_staking_pool {
     const SuiPerStsuiPrecision: u64 = 1_000_000_000;
 
     const MIN_STAKING_THRESHOLD: u64 = 1_000_000_000; // 1 SUI
+    const DOLPHIN_THRESHOLD: u64 = 1_000_000_000; // 1 stSUI
 
     const EInvalidEpoch: u64 = 0;
     const EInvalidTreasuryCap: u64 = 1;
     const EInsufficientSuiAmount: u64 = 2;
+
+    struct SUI_STAKING_POOL has drop {}
 
     struct SuiStakingPool has key {
         id: UID,
@@ -39,6 +44,39 @@ module suisa::sui_staking_pool {
         id: UID,
         created_epoch: u64,
         principal: u64,
+        image_url: String,
+    }
+
+    // initializer
+    fun init(otw: SUI_STAKING_POOL, ctx: &mut TxContext) {
+        let keys = vector[
+            utf8(b"name"),
+            utf8(b"link"),
+            utf8(b"image_url"),
+            utf8(b"description"),
+            utf8(b"project_url"),
+            utf8(b"creator"),
+        ];
+
+        let values = vector[
+            utf8(b"Awesome Sui Fish Box"),
+            utf8(b"https://clober.io"),
+            utf8(b"{image_url}"),
+            utf8(b"A Sui Fish Box"),
+            utf8(b"https://clober.io"),
+            utf8(b"Clober Team")
+        ];
+
+        let publisher = package::claim(otw, ctx);
+
+        let display = display::new_with_fields<Box>(
+            &publisher, keys, values, ctx
+        );
+
+        display::update_version(&mut display);
+
+        transfer::public_transfer(publisher, tx_context::sender(ctx));
+        transfer::public_transfer(display, tx_context::sender(ctx));
     }
 
     // below are public entry functions
@@ -79,10 +117,18 @@ module suisa::sui_staking_pool {
             vector::push_back(&mut sui_staking_pool.staked_sui_treasury, staked_sui);
         };
         sui_staking_pool.pending_sui_amount = sui_staking_pool.pending_sui_amount + stake_sui_amount;
+        let current_epoch = tx_context::epoch(ctx);
+        let estimated_stsui_amount = stake_sui_amount * SuiPerStsuiPrecision / get_sui_per_stsui(sui_system_state, sui_staking_pool, current_epoch);
+        let image_url = if (estimated_stsui_amount > DOLPHIN_THRESHOLD) {
+            utf8(b"https://www.suisa.club/assets/images/box/blue.png")
+        } else {
+            utf8(b"https://www.suisa.club/assets/images/box/pink.png")
+        };
         transfer::public_transfer(Box {
             id: object::new(ctx),
             created_epoch: tx_context::epoch(ctx),
             principal: stake_sui_amount,
+            image_url: image_url,
         }, tx_context::sender(ctx));
     }
 
@@ -140,7 +186,7 @@ module suisa::sui_staking_pool {
         );
 
         let current_epoch = tx_context::epoch(ctx);
-        let Box { id, created_epoch: _, principal } = box;
+        let Box { id, created_epoch: _, principal, image_url: _ } = box;
         object::delete(id);
         let stsui_amount = principal * SuiPerStsuiPrecision / get_sui_per_stsui(sui_system_state, sui_staking_pool, current_epoch);
         sui_staking_pool.pending_sui_amount = sui_staking_pool.pending_sui_amount - principal;
